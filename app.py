@@ -1,4 +1,4 @@
-"""
+ """
 Resume ATS Checker
 ------------------
 Upload a resume (PDF, DOCX or TXT) and get an estimated ATS score plus
@@ -23,7 +23,11 @@ from pypdf import PdfReader
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# "gemini-flash-latest" is Google's alias that always points to the newest Flash model,
+# so the app keeps working when older models are retired. If the chosen model is
+# unavailable, the app automatically tries these fallbacks.
+DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3-flash-preview"]
 MAX_RESUME_CHARS = 20_000
 MAX_JD_CHARS = 8_000
 MAX_FILE_MB = 5
@@ -234,21 +238,34 @@ def compute_overall_score(scores: CategoryScores) -> int:
     return round(total)
 
 
+def is_model_unavailable(exc: Exception) -> bool:
+    low = str(exc).lower()
+    return any(t in low for t in ("404", "not_found", "not found", "no longer available", "is not supported"))
+
+
 def analyze_resume(
     resume_text: str, job_description: str, api_key: str, model: str = DEFAULT_MODEL
 ) -> ResumeAnalysis:
     client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
-        model=model,
-        contents=build_prompt(resume_text, job_description),
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            response_mime_type="application/json",
-            response_schema=ResumeAnalysis,
-            temperature=0.2,
-        ),
+    prompt = build_prompt(resume_text, job_description)
+    config = types.GenerateContentConfig(
+        system_instruction=SYSTEM_PROMPT,
+        response_mime_type="application/json",
+        response_schema=ResumeAnalysis,
+        temperature=0.2,
     )
-    return normalize_analysis(_parse_json(response.text))
+    candidates = list(dict.fromkeys([model] + FALLBACK_MODELS))  # de-duplicated, order kept
+    last_exc = None
+    for name in candidates:
+        try:
+            response = client.models.generate_content(model=name, contents=prompt, config=config)
+        except Exception as exc:  # noqa: BLE001
+            if is_model_unavailable(exc):
+                last_exc = exc  # model retired/unknown -> try the next one
+                continue
+            raise
+        return normalize_analysis(_parse_json(response.text))
+    raise last_exc
 
 
 def friendly_error(exc: Exception) -> str:
@@ -259,7 +276,8 @@ def friendly_error(exc: Exception) -> str:
     if "429" in low or "quota" in low or "resource_exhausted" in low:
         return "Gemini rate limit or quota reached. Wait a minute and try again."
     if "404" in low or "not found" in low:
-        return f"The model was not found. Check the model name in the sidebar. ({msg[:150]})"
+        return ("No available Gemini model was found. Set a current model name in the sidebar "
+                "(see https://ai.google.dev/gemini-api/docs/models). " f"({msg[:150]})")
     if isinstance(exc, (json.JSONDecodeError, ValueError)):
         return "The AI returned an unreadable response. Please click Analyze again."
     return f"Something went wrong while contacting Gemini: {msg[:300]}"
