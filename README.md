@@ -1,5 +1,4 @@
-# AI-assistant-3
-# 📄 Resume ATS Checker
+ # 📄 Resume ATS Checker
 
 Upload a resume (PDF, DOCX or TXT) and get an **estimated ATS score**, a category breakdown,
 keyword analysis, prioritized improvements and suggested bullet rewrites — powered by
@@ -42,7 +41,7 @@ streamlit run app.py
 | Setting | How | Default |
 |---|---|---|
 | API key | sidebar, `st.secrets["GEMINI_API_KEY"]`, or env var | – |
-| Model | sidebar field or `GEMINI_MODEL` env var | `gemini-2.5-flash` |
+| Model | sidebar field or `GEMINI_MODEL` env var | `gemini-flash-latest` (auto-falls back to specific 3.x Flash models) |
 
 ## Deploy on Streamlit Community Cloud
 1. Push this repo to GitHub (public or private).
