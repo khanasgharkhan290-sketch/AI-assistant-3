@@ -1,3 +1,4 @@
+ """
 Resume ATS Checker
 ------------------
 Upload a resume (PDF, DOCX or TXT) and get an estimated ATS score plus
